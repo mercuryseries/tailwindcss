@@ -17,6 +17,7 @@ import * as sharedState from './sharedState'
 import { env } from './sharedState'
 import { toPath } from '../util/toPath'
 import { formatClass } from '../util/nameClass'
+import log from '../util/log'
 
 function insertInto(list, value, { before = [] } = {}) {
   before = [].concat(before)
@@ -562,6 +563,67 @@ function registerPlugins(plugins, context) {
     }
 
     return output
+  }
+
+  //
+  let warnedAbout = new Set([])
+  context.safelist = function () {
+    let safelist = (context.tailwindConfig.safelist ?? []).filter(Boolean)
+    if (safelist.length <= 0) return []
+
+    let output = []
+    let checks = []
+
+    for (let value of safelist) {
+      if (typeof value === 'string') {
+        output.push(value)
+        continue
+      }
+
+      if (value instanceof RegExp) {
+        if (!warnedAbout.has('regex')) {
+          log.warn([
+            'RegExp in the safelist option is not supported.',
+            'Please use the object syntax instead: https://tailwindcss.com/docs/...',
+          ])
+          warnedAbout.add('regex')
+        }
+        continue
+      }
+
+      checks.push(value)
+    }
+
+    if (checks.length <= 0) return output.map((value) => ({ raw: value, extension: 'html' }))
+
+    for (let util of classList) {
+      let utils = Array.isArray(util)
+        ? (() => {
+            let [utilName, options] = util
+            return Object.keys(options?.values ?? {}).map((value) => formatClass(utilName, value))
+          })()
+        : [util]
+
+      for (let util of utils) {
+        for (let { pattern, variants = [], variantsOnly = false } of checks) {
+          // RegExp with the /g flag are stateful, so let's reset the last
+          // index pointer to reset the state.
+          pattern.lastIndex = 0
+
+          if (!pattern.test(util)) continue
+
+          if (!variantsOnly) {
+            output.push(util)
+          }
+
+          for (let variant of variants) {
+            output.push(variant + context.tailwindConfig.separator + util)
+          }
+        }
+      }
+    }
+
+    return output.map((value) => ({ raw: value, extension: 'html' }))
   }
 }
 

@@ -16,7 +16,7 @@ it('should generate completions for every possible class, without variants', () 
   // Verify we handle negative values correctly
   expect(context.completions()).toContain('-inset-1/4')
 
-  // Verify we list extra information for colors
+  // Verify we list extra information for colors (!tuples)
   let fromBlack = context
     .completions()
     .find((value) => Array.isArray(value) && value[0] === 'from-black')
