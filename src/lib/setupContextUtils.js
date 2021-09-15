@@ -16,6 +16,7 @@ import * as corePlugins from '../corePlugins'
 import * as sharedState from './sharedState'
 import { env } from './sharedState'
 import { toPath } from '../util/toPath'
+import { formatClass } from '../util/nameClass'
 
 function insertInto(list, value, { before = [] } = {}) {
   before = [].concat(before)
@@ -146,7 +147,7 @@ function isValidArbitraryValue(value) {
   return true
 }
 
-function buildPluginApi(tailwindConfig, context, { variantList, variantMap, offsets }) {
+function buildPluginApi(tailwindConfig, context, { variantList, variantMap, offsets, classList }) {
   function getConfigValue(path, defaultValue) {
     return path ? dlv(tailwindConfig, path, defaultValue) : tailwindConfig
   }
@@ -241,6 +242,8 @@ function buildPluginApi(tailwindConfig, context, { variantList, variantMap, offs
         let prefixedIdentifier = prefixIdentifier(identifier, options)
         let offset = offsets.components++
 
+        classList.add(prefixedIdentifier)
+
         if (!context.candidateRuleMap.has(prefixedIdentifier)) {
           context.candidateRuleMap.set(prefixedIdentifier, [])
         }
@@ -268,6 +271,8 @@ function buildPluginApi(tailwindConfig, context, { variantList, variantMap, offs
         let prefixedIdentifier = prefixIdentifier(identifier, options)
         let offset = offsets.utilities++
 
+        classList.add(prefixedIdentifier)
+
         if (!context.candidateRuleMap.has(prefixedIdentifier)) {
           context.candidateRuleMap.set(prefixedIdentifier, [])
         }
@@ -292,6 +297,8 @@ function buildPluginApi(tailwindConfig, context, { variantList, variantMap, offs
       for (let identifier in utilities) {
         let prefixedIdentifier = prefixIdentifier(identifier, options)
         let rule = utilities[identifier]
+
+        classList.add([prefixedIdentifier, options])
 
         function wrapped(modifier) {
           let { type = 'any' } = options
@@ -468,10 +475,13 @@ function registerPlugins(plugins, context) {
     user: 0n,
   }
 
+  let classList = new Set()
+
   let pluginApi = buildPluginApi(context.tailwindConfig, context, {
     variantList,
     variantMap,
     offsets,
+    classList,
   })
 
   for (let plugin of plugins) {
@@ -522,6 +532,36 @@ function registerPlugins(plugins, context) {
       variantName,
       variantFunctions.map((variantFunction, idx) => [sort << BigInt(idx), variantFunction])
     )
+  }
+
+  // Generate a list of strings for autocompletion purposes. Colors will have a
+  // tuple with options, e.g.:
+  // ['uppercase', 'lowercase', ['bg-red', { color: 'rgb(255 0 0)' }]]
+  context.completions = function () {
+    // TODO: Try and detect color from components?
+    // TODO: Should we provide a simple "public api" file with functions?
+    let output = []
+
+    for (let util of classList) {
+      if (Array.isArray(util)) {
+        let [utilName, options] = util
+        let isColor = [].concat(options.type).includes('color')
+
+        if (isColor) {
+          for (let [value, color] of Object.entries(options?.values ?? {})) {
+            output.push([formatClass(utilName, value), { color }])
+          }
+        } else {
+          for (let value of Object.keys(options?.values ?? {})) {
+            output.push(formatClass(utilName, value))
+          }
+        }
+      } else {
+        output.push(util)
+      }
+    }
+
+    return output
   }
 }
 
